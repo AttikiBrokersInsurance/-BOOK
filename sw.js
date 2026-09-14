@@ -1,7 +1,10 @@
 // Minimal service worker — only caches the static app shell so the
 // browser considers the app installable. Firestore/auth network calls
 // are left completely untouched (not intercepted below).
-const CACHE_NAME = 'sumvolaia-shell-v1';
+// NETWORK-FIRST for shell files: always tries to fetch the latest version
+// first, and only falls back to the cached copy if the network is down.
+// This avoids ever getting "stuck" on an old cached index.html.
+const CACHE_NAME = 'sumvolaia-shell-v2';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -29,12 +32,4 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const isShellFile = url.origin === self.location.origin &&
-    SHELL_FILES.some((f) => url.pathname.endsWith(f.replace('./', '')) || (f === './' && url.pathname === '/'));
-
-  if (isShellFile) {
-    event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
-    );
-  }
-  // Everything else (Firebase/Firestore/auth/fonts) passes straight through.
-});
+    SHELL_FILES.some((f) =>
