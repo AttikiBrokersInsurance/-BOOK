@@ -361,7 +361,7 @@
   // ---------- auth ----------
   document.getElementById('signInBtn').addEventListener('click', ()=>{
     const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider).catch(err=>{
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent); if(isMobile){ auth.signInWithRedirect(provider).catch(err=>alert('Αποτυχία σύνδεσης: '+err.message)); return; } auth.signInWithPopup(provider).catch(err=>{
       alert('Αποτυχία σύνδεσης: '+err.message);
     });
   });
