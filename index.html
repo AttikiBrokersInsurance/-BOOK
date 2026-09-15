@@ -187,6 +187,34 @@
 
   footer.note{margin-top:36px; font-size:12px; color:var(--ink-soft); border-top:1px solid var(--line); padding-top:14px;}
 
+  /* payments */
+  .paid-tag{display:inline-block; padding:2px 8px; border-radius:20px; font-size:11.5px; font-weight:500; white-space:nowrap;}
+  .paid-tag.paid-none{background:var(--panel-soft); color:var(--ink-soft);}
+  .paid-tag.paid-partial{background:var(--warn-bg); color:var(--warn);}
+  .paid-tag.paid-full{background:var(--primary-soft); color:var(--primary-dark);}
+  #paymentsModal{
+    display:none; position:fixed; inset:0; background:rgba(28,35,33,0.45); z-index:200;
+    align-items:center; justify-content:center; padding:20px;
+  }
+  .payments-card{
+    background:var(--panel); border-radius:6px; padding:24px; width:100%; max-width:440px;
+    max-height:80vh; display:flex; flex-direction:column;
+  }
+  .payments-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;}
+  .payments-head h3{font-size:17px;}
+  .payments-total{font-size:13px; color:var(--ink-soft); margin-bottom:14px;}
+  .payments-total b{color:var(--ink); font-weight:600;}
+  .payments-list{overflow-y:auto; flex:1; margin-bottom:14px; border-top:1px solid var(--line);}
+  .payment-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:9px 2px; border-bottom:1px solid var(--line); font-size:13.5px;
+  }
+  .empty-note{color:var(--ink-soft); font-size:13px; text-align:center; padding:20px 0;}
+  .payments-add{display:flex; gap:8px; flex-wrap:wrap;}
+  .payments-add input[type=date]{flex:1; min-width:130px; padding:8px 10px; border:1px solid var(--line); border-radius:4px; font-family:inherit; font-size:13.5px;}
+  .payments-add input[type=number]{width:110px; padding:8px 10px; border:1px solid var(--line); border-radius:4px; font-family:inherit; font-size:13.5px;}
+  .payments-add button{white-space:nowrap;}
+
   @media(max-width:860px){
     .form-grid{grid-template-columns:repeat(2,1fr);}
     header.top{flex-direction:column; align-items:flex-start;}
@@ -291,6 +319,7 @@
           <th data-key="commission">Προμήθειες <span class="arrow"></span></th>
           <th data-key="gross">Μεικτά <span class="arrow"></span></th>
           <th data-key="bonus">Μπόνους <span class="arrow"></span></th>
+          <th>Πληρωμές</th>
           <th>Σημείωση</th>
           <th>Καταχώρισε</th>
           <th>Ενέργειες</th>
@@ -320,6 +349,22 @@
 
 </div>
 
+<div id="paymentsModal">
+  <div class="payments-card">
+    <div class="payments-head">
+      <h3 id="paymentsTitle">Πληρωμές</h3>
+      <button class="btn-ghost" id="closePaymentsBtn">Κλείσιμο</button>
+    </div>
+    <div class="payments-total">Σύνολο πληρωμένο: <b id="paymentsTotal">0,00 €</b></div>
+    <div id="paymentsList" class="payments-list"></div>
+    <div class="payments-add">
+      <input type="date" id="p_date">
+      <input type="number" step="0.01" id="p_amount" placeholder="Ποσό (€)">
+      <button class="btn-primary" id="addPaymentBtn">Καταχώριση πληρωμής</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -328,7 +373,7 @@
   // 1) Βάλε εδώ τα στοιχεία του Firebase project σου
   //    (Firebase Console → Project settings → Your apps → Web app)
   // ============================================================
-    const firebaseConfig = {
+  const firebaseConfig = {
     apiKey: "AIzaSyD32wAIERHAc3_xFxKtdQ3B4qkIE5Wm8rM",
     authDomain: "attiki-brokers-insurance.firebaseapp.com",
     projectId: "attiki-brokers-insurance",
@@ -339,10 +384,13 @@
   };
 
   // 2) Βάλε εδώ τα Google email που επιτρέπεται να έχουν πρόσβαση
+  //    (πρέπει να ταιριάζουν ΑΚΡΙΒΩΣ με τους κανόνες ασφαλείας του Firestore)
   const ALLOWED_EMAILS = [
     "attiki.brokers@gmail.com",
     "mpouristhanos@gmail.com"
-          ];
+  ];
+  // ============================================================
+
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
@@ -361,7 +409,7 @@
   // ---------- auth ----------
   document.getElementById('signInBtn').addEventListener('click', ()=>{
     const provider = new firebase.auth.GoogleAuthProvider();
-    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent); auth.signInWithPopup(provider).catch(err=>{
+    auth.signInWithPopup(provider).catch(err=>{
       alert('Αποτυχία σύνδεσης: '+err.message);
     });
   });
@@ -507,7 +555,7 @@
     const rows = sortRows(getFiltered());
     const tbody = document.getElementById('tbody');
     if(rows.length===0){
-      tbody.innerHTML = `<tr class="empty-row"><td colspan="14">Δεν βρέθηκαν συμβόλαια.</td></tr>`;
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="15">Δεν βρέθηκαν συμβόλαια.</td></tr>`;
     } else {
       tbody.innerHTML = rows.map(rowHtml).join('');
     }
@@ -523,6 +571,9 @@
     const badge = c.status==='soon' ? `<span class="status-badge soon">${c.daysLeft} ημέρες</span>`
       : c.status==='over' ? `<span class="status-badge over">Έληξε (${Math.abs(c.daysLeft)}ημ.)</span>`
       : `<span class="status-badge">${c.daysLeft} ημέρες</span>`;
+    const paid = Number(c.paidTotal)||0;
+    const gross = Number(c.gross)||0;
+    const paidClass = gross>0 && paid>=gross ? 'paid-full' : (paid>0 ? 'paid-partial' : 'paid-none');
     return `<tr class="${trClass}" data-id="${c.id}">
       <td>${fmtDate(new Date(c.date+"T00:00:00"))}</td>
       <td>${fmtDate(c.expiryDate)}</td>
@@ -535,10 +586,12 @@
       <td class="num-cell">${fmtMoney(c.commission)}</td>
       <td class="num-cell">${fmtMoney(c.gross)}</td>
       <td class="num-cell">${fmtMoney(c.bonus)}</td>
+      <td class="num-cell"><span class="paid-tag ${paidClass}">${fmtMoney(paid)} / ${fmtMoney(gross)}</span></td>
       <td class="note-cell" title="${escapeHtml(c.notes)}">${escapeHtml(c.notes)}</td>
       <td class="who-cell">${escapeHtml(c.createdBy||'')}</td>
       <td class="row-actions">
         <button class="btn-text" data-action="edit" data-id="${c.id}">Επεξεργασία</button>
+        <button class="btn-text" data-action="payments" data-id="${c.id}">Πληρωμές</button>
         <button class="btn-danger-text" data-action="delete" data-id="${c.id}">Διαγραφή</button>
       </td>
     </tr>`;
@@ -632,7 +685,8 @@
     editingId = null;
     document.getElementById('formPanel').classList.remove('open');
   }
-  function saveForm(){
+
+  async function saveForm(){
     const date = document.getElementById('f_date').value;
     const client = document.getElementById('f_client').value.trim();
     const company1 = document.getElementById('f_company1').value.trim();
@@ -641,13 +695,15 @@
       alert('Συμπληρώστε τα υποχρεωτικά πεδία: ημερομηνία, αριθμός/είδος, εταιρία Α, πελάτης.');
       return;
     }
+    const duration = document.getElementById('f_duration').value;
+    const company2 = document.getElementById('f_company2').value.trim();
     const data = {
       date,
-      duration: document.getElementById('f_duration').value,
+      duration,
       ref,
       client,
       company1,
-      company2: document.getElementById('f_company2').value.trim(),
+      company2,
       net: parseFloat(document.getElementById('f_net').value)||0,
       gross: parseFloat(document.getElementById('f_gross').value)||0,
       commission: parseFloat(document.getElementById('f_commission').value)||0,
@@ -658,17 +714,21 @@
     };
     const saveBtn = document.getElementById('saveBtn');
     saveBtn.disabled = true; saveBtn.textContent = 'Αποθήκευση…';
-    let op;
-    if(editingId){
-      op = colRef.doc(editingId).update(data);
-    } else {
-      data.createdBy = currentUser ? currentUser.email : '';
-      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-      op = colRef.add(data);
+    try{
+      if(editingId){
+        await colRef.doc(editingId).update(data);
+      } else {
+        data.createdBy = currentUser ? currentUser.email : '';
+        data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        data.paidTotal = 0;
+        await colRef.add(data);
+      }
+      closeForm();
+    }catch(err){
+      alert('Σφάλμα αποθήκευσης: '+err.message);
+    }finally{
+      saveBtn.disabled=false; saveBtn.textContent='Αποθήκευση';
     }
-    op.then(()=>{ closeForm(); })
-      .catch(err=>alert('Σφάλμα αποθήκευσης: '+err.message))
-      .finally(()=>{ saveBtn.disabled=false; saveBtn.textContent='Αποθήκευση'; });
   }
 
   function deleteContract(id){
@@ -678,7 +738,7 @@
     colRef.doc(id).delete().catch(err=>alert('Σφάλμα διαγραφής: '+err.message));
   }
 
-  // ---------- export (backup only — import goes through the shared book directly) ----------
+  // ---------- export ----------
   function exportJson(){
     const blob = new Blob([JSON.stringify(contracts,null,2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
@@ -688,6 +748,98 @@
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   }
+
+  // ---------- payments (per contract) ----------
+  let paymentsUnsub = null;
+  let paymentsContractId = null;
+
+  function paymentsColRef(contractId){
+    return colRef.doc(contractId).collection('payments');
+  }
+
+  function openPayments(id){
+    const c = contracts.find(x=>x.id===id);
+    if(!c) return;
+    paymentsContractId = id;
+    document.getElementById('paymentsTitle').textContent = `Πληρωμές — ${c.client} (${c.ref})`;
+    document.getElementById('p_date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('p_amount').value = '';
+    document.getElementById('paymentsModal').style.display = 'flex';
+    if(paymentsUnsub) paymentsUnsub();
+    paymentsUnsub = paymentsColRef(id).orderBy('date','desc').onSnapshot(snapshot=>{
+      renderPayments(snapshot.docs.map(d=>Object.assign({id:d.id}, d.data())));
+    }, err=>{
+      document.getElementById('paymentsList').innerHTML = `<div class="empty-note">Σφάλμα: ${escapeHtml(err.message)}</div>`;
+    });
+  }
+  function closePayments(){
+    document.getElementById('paymentsModal').style.display = 'none';
+    if(paymentsUnsub){ paymentsUnsub(); paymentsUnsub = null; }
+    paymentsContractId = null;
+  }
+  function renderPayments(payments){
+    _lastPayments = payments;
+    const list = document.getElementById('paymentsList');
+    const total = payments.reduce((s,p)=>s+(Number(p.amount)||0), 0);
+    document.getElementById('paymentsTotal').textContent = fmtMoney(total);
+    if(payments.length===0){
+      list.innerHTML = `<div class="empty-note">Δεν έχουν καταχωρηθεί πληρωμές ακόμα.</div>`;
+      return;
+    }
+    list.innerHTML = payments.map(p=>`
+      <div class="payment-row">
+        <span>${fmtDate(new Date(p.date+"T00:00:00"))}</span>
+        <span class="num-cell">${fmtMoney(p.amount)}</span>
+        <button class="btn-danger-text" data-id="${p.id}">Διαγραφή</button>
+      </div>
+    `).join('');
+  }
+  async function addPayment(){
+    const date = document.getElementById('p_date').value;
+    const amount = parseFloat(document.getElementById('p_amount').value);
+    if(!date || !amount || amount<=0){
+      alert('Συμπλήρωσε ημερομηνία και ποσό μεγαλύτερο από 0.');
+      return;
+    }
+    const btn = document.getElementById('addPaymentBtn');
+    btn.disabled = true; btn.textContent = 'Καταχώριση…';
+    try{
+      const batch = db.batch();
+      batch.set(paymentsColRef(paymentsContractId).doc(), {
+        date, amount,
+        createdBy: currentUser ? currentUser.email : '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      batch.update(colRef.doc(paymentsContractId), { paidTotal: firebase.firestore.FieldValue.increment(amount) });
+      await batch.commit();
+      document.getElementById('p_amount').value = '';
+      document.getElementById('p_date').value = new Date().toISOString().slice(0,10);
+    }catch(err){
+      alert('Σφάλμα: '+err.message);
+    }finally{
+      btn.disabled=false; btn.textContent='Καταχώριση πληρωμής';
+    }
+  }
+  async function deletePayment(paymentId, amount){
+    if(!confirm('Διαγραφή αυτής της πληρωμής;')) return;
+    try{
+      const batch = db.batch();
+      batch.delete(paymentsColRef(paymentsContractId).doc(paymentId));
+      batch.update(colRef.doc(paymentsContractId), { paidTotal: firebase.firestore.FieldValue.increment(-amount) });
+      await batch.commit();
+    }catch(err){
+      alert('Σφάλμα: '+err.message);
+    }
+  }
+  document.getElementById('closePaymentsBtn').addEventListener('click', closePayments);
+  document.getElementById('addPaymentBtn').addEventListener('click', addPayment);
+  let _lastPayments = [];
+  document.getElementById('paymentsList').addEventListener('click', (e)=>{
+    const btn = e.target.closest('button[data-id]');
+    if(!btn) return;
+    const row = _lastPayments.find(p=>p.id===btn.dataset.id);
+    deletePayment(btn.dataset.id, row ? row.amount : 0);
+  });
 
   // ---------- events ----------
   document.getElementById('addBtn').addEventListener('click', openAdd);
@@ -703,6 +855,7 @@
     const id = btn.dataset.id;
     if(btn.dataset.action==='edit') openEdit(id);
     if(btn.dataset.action==='delete') deleteContract(id);
+    if(btn.dataset.action==='payments') openPayments(id);
   });
   document.querySelectorAll('thead th[data-key]').forEach(th=>{
     th.addEventListener('click', ()=>{
