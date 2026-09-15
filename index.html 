@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attiki Brokers — Βιβλίο Συμβολαίων</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2B5D53">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Συμβόλαια">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Firebase (compat libraries — no build step needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --paper:#EFEBE1;
+    --panel:#FFFFFF;
+    --panel-soft:#F7F4EC;
+    --ink:#1C2321;
+    --ink-soft:#5B6560;
+    --line:#D9D2C0;
+    --primary:#2B5D53;
+    --primary-dark:#1E463D;
+    --primary-soft:#E3ECE8;
+    --warn:#B4711F;
+    --warn-bg:#FBEEDA;
+    --danger:#9C3B2E;
+    --danger-bg:#F6E2DD;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:14px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:'Source Serif 4', serif; margin:0; font-weight:600;}
+  .wrap{max-width:1400px; margin:0 auto; padding:32px 28px 80px;}
+
+  /* auth gate */
+  #authGate{
+    position:fixed; inset:0; background:var(--paper); display:flex; align-items:center; justify-content:center; z-index:100;
+  }
+  #authGate .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:36px 40px; max-width:380px; text-align:center;
+  }
+  #authGate .card img.brand-mark{width:72px; height:72px; border-radius:14px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,0.15);}
+  #authGate h1{font-size:22px; margin-bottom:8px;}
+  #authGate p{color:var(--ink-soft); font-size:13.5px; margin-bottom:20px;}
+  #authGate .denied{color:var(--danger); background:var(--danger-bg); border-radius:4px; padding:10px 12px; font-size:13px; margin-top:16px; display:none;}
+  #signInBtn{
+    background:var(--primary); color:#fff; border:none; border-radius:4px; padding:11px 20px; font-size:14px;
+    font-family:inherit; cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+  }
+  #signInBtn:hover{background:var(--primary-dark);}
+  #syncState{font-size:11.5px; color:var(--ink-soft);}
+  #syncState.err{color:var(--danger);}
+
+  /* header */
+  header.top{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    border-bottom:2px solid var(--ink); padding-bottom:18px; margin-bottom:22px;
+    flex-wrap:wrap; gap:14px;
+  }
+  header.top h1{font-size:30px; letter-spacing:-0.01em;}
+  header.top .brand{display:flex; align-items:center; gap:14px;}
+  header.top .brand img{width:46px; height:46px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.15);}
+  header.top .sub{color:var(--ink-soft); font-size:13px; margin-top:4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .stat-block{display:flex; gap:22px; align-items:flex-end;}
+  .stat{text-align:right;}
+  .stat .num{font-family:'Source Serif 4', serif; font-size:24px; font-weight:700; font-variant-numeric:tabular-nums;}
+  .stat .lbl{font-size:11.5px; color:var(--ink-soft);}
+  .whoami{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-soft);}
+  .whoami img{width:22px; height:22px; border-radius:50%;}
+  .whoami button{background:none; border:none; text-decoration:underline; color:var(--ink-soft); cursor:pointer; font-size:12px; padding:0;}
+
+  /* alert banner */
+  #alertBanner{margin-bottom:20px;}
+  .alert-box{
+    background:var(--warn-bg); border:1px solid #E3C48F; border-left:4px solid var(--warn);
+    border-radius:var(--radius); padding:12px 16px; margin-bottom:8px;
+  }
+  .alert-box.danger{background:var(--danger-bg); border-color:#E0B3A8; border-left-color:var(--danger);}
+  .alert-box .title{font-weight:600; margin-bottom:6px; color:var(--ink);}
+  .alert-list{display:flex; flex-wrap:wrap; gap:8px;}
+  .alert-chip{
+    background:var(--panel); border:1px solid var(--line); border-radius:20px;
+    padding:4px 12px; font-size:12.5px; cursor:pointer;
+  }
+  .alert-chip b{font-weight:600;}
+  .alert-chip.d0{border-color:var(--danger); color:var(--danger);}
+
+  /* toolbar */
+  .toolbar{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px;
+  }
+  .toolbar input[type=search]{
+    flex:1; min-width:220px; padding:9px 12px; border:1px solid var(--line);
+    border-radius:var(--radius); background:var(--panel); font-family:inherit; font-size:13.5px;
+  }
+  select.filter-select{
+    padding:9px 10px; border:1px solid var(--line); border-radius:var(--radius);
+    background:var(--panel); font-family:inherit; font-size:13.5px;
+  }
+  button{
+    font-family:'IBM Plex Sans', sans-serif; cursor:pointer; border-radius:var(--radius);
+    font-size:13.5px; padding:9px 16px; border:1px solid transparent;
+  }
+  .btn-primary{background:var(--primary); color:#fff; font-weight:500;}
+  .btn-primary:hover{background:var(--primary-dark);}
+  .btn-ghost{background:transparent; border:1px solid var(--line); color:var(--ink);}
+  .btn-ghost:hover{border-color:var(--ink);}
+  .btn-text{background:none; border:none; color:var(--primary); padding:6px 8px; text-decoration:underline;}
+  .btn-danger-text{background:none; border:none; color:var(--danger); padding:6px 8px; text-decoration:underline;}
+
+  /* form panel */
+  #formPanel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:20px; margin-bottom:22px; display:none;
+  }
+  #formPanel.open{display:block;}
+  #formPanel h2{font-size:17px; margin-bottom:14px;}
+  .form-grid{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:14px;
+  }
+  .form-grid .full{grid-column:1 / -1;}
+  .field label{display:block; font-size:11.5px; color:var(--ink-soft); margin-bottom:4px; font-weight:500;}
+  .field input, .field select, .field textarea{
+    width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:var(--radius);
+    font-family:inherit; font-size:13.5px; background:var(--panel-soft);
+  }
+  .field textarea{resize:vertical; min-height:40px;}
+  .form-actions{display:flex; gap:10px; margin-top:16px; justify-content:flex-end; align-items:center;}
+
+  /* table */
+  .table-scroll{overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius); background:var(--panel);}
+  table{width:100%; border-collapse:collapse; min-width:1260px;}
+  thead th{
+    text-align:left; padding:10px 12px; font-size:11.5px; font-weight:600; color:var(--ink-soft);
+    border-bottom:2px solid var(--ink); background:var(--panel-soft); white-space:nowrap; cursor:pointer;
+    user-select:none;
+  }
+  thead th:hover{color:var(--ink);}
+  thead th .arrow{font-size:10px; margin-left:3px; opacity:0.6;}
+  tbody td{padding:10px 12px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top;}
+  tbody tr:hover{background:var(--panel-soft);}
+  tbody tr.exp-soon td:first-child{box-shadow:inset 3px 0 0 var(--warn);}
+  tbody tr.exp-over td:first-child{box-shadow:inset 3px 0 0 var(--danger);}
+  .num-cell{font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap;}
+  .status-badge{
+    display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:500;
+    background:var(--primary-soft); color:var(--primary-dark);
+  }
+  .status-badge.soon{background:var(--warn-bg); color:var(--warn);}
+  .status-badge.over{background:var(--danger-bg); color:var(--danger);}
+  .note-cell{max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-soft); font-size:12.5px;}
+  .who-cell{color:var(--ink-soft); font-size:12px; white-space:nowrap;}
+  .row-actions{white-space:nowrap;}
+  .empty-row td{text-align:center; padding:40px; color:var(--ink-soft);}
+
+  /* monthly totals */
+  #monthlyPanel{margin-top:32px;}
+  #monthlyPanel h2{font-size:19px; margin-bottom:12px; padding-bottom:8px; border-bottom:2px solid var(--ink);}
+  .month-table{width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);}
+  .month-table th{text-align:right; padding:9px 12px; font-size:11px; color:var(--ink-soft); border-bottom:2px solid var(--ink); background:var(--panel-soft);}
+  .month-table th:first-child, .month-table td:first-child{text-align:left;}
+  .month-table td{padding:9px 12px; border-bottom:1px solid var(--line); font-size:13px; font-variant-numeric:tabular-nums; text-align:right;}
+  .month-table tr:last-child td{border-bottom:none;}
+  .month-table tr.grand-total td{font-weight:700; border-top:2px solid var(--ink); background:var(--panel-soft);}
+
+  footer.note{margin-top:36px; font-size:12px; color:var(--ink-soft); border-top:1px solid var(--line); padding-top:14px;}
+
+  /* payments */
+  .paid-tag{display:inline-block; padding:2px 8px; border-radius:20px; font-size:11.5px; font-weight:500; white-space:nowrap;}
+  .paid-tag.paid-none{background:var(--panel-soft); color:var(--ink-soft);}
+  .paid-tag.paid-partial{background:var(--warn-bg); color:var(--warn);}
+  .paid-tag.paid-full{background:var(--primary-soft); color:var(--primary-dark);}
+  #paymentsModal{
+    display:none; position:fixed; inset:0; background:rgba(28,35,33,0.45); z-index:200;
+    align-items:center; justify-content:center; padding:20px;
+  }
+  .payments-card{
+    background:var(--panel); border-radius:6px; padding:24px; width:100%; max-width:440px;
+    max-height:80vh; display:flex; flex-direction:column;
+  }
+  .payments-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;}
+  .payments-head h3{font-size:17px;}
+  .payments-total{font-size:13px; color:var(--ink-soft); margin-bottom:14px;}
+  .payments-total b{color:var(--ink); font-weight:600;}
+  .payments-list{overflow-y:auto; flex:1; margin-bottom:14px; border-top:1px solid var(--line);}
+  .payment-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:9px 2px; border-bottom:1px solid var(--line); font-size:13.5px;
+  }
+  .empty-note{color:var(--ink-soft); font-size:13px; text-align:center; padding:20px 0;}
+  .payments-add{display:flex; gap:8px; flex-wrap:wrap;}
+  .payments-add input[type=date]{flex:1; min-width:130px; padding:8px 10px; border:1px solid var(--line); border-radius:4px; font-family:inherit; font-size:13.5px;}
+  .payments-add input[type=number]{width:110px; padding:8px 10px; border:1px solid var(--line); border-radius:4px; font-family:inherit; font-size:13.5px;}
+  .payments-add button{white-space:nowrap;}
+
+  @media(max-width:860px){
+    .form-grid{grid-template-columns:repeat(2,1fr);}
+    header.top{flex-direction:column; align-items:flex-start;}
+  }
+</style>
+</head>
+<body>
+
+<div id="authGate">
+  <div class="card">
+    <img class="brand-mark" src="icons/icon-192.png" alt="Attiki Brokers">
+    <h1>Βιβλίο Συμβολαίων</h1>
+    <p>Κοινό βιβλίο — συνδέσου με το Google account σου για να δεις και να καταχωρίσεις συμβόλαια.</p>
+    <button id="signInBtn">Σύνδεση με Google</button>
+    <div class="denied" id="deniedMsg">Το λογαριασμό αυτό δεν έχει πρόσβαση στο βιβλίο. Ζήτησε από όποιον το διαχειρίζεται να προσθέσει το email σου.</div>
+  </div>
+</div>
+
+<div class="wrap" id="appWrap" style="display:none;">
+
+  <header class="top">
+    <div class="brand">
+      <img src="icons/icon-192.png" alt="Attiki Brokers">
+      <div>
+        <h1>Βιβλίο Συμβολαίων</h1>
+        <div class="sub">
+          <span>Attiki Brokers — Insurance</span>
+          <span id="syncState">● συγχρονισμός…</span>
+        </div>
+      </div>
+    </div>
+    <div class="stat-block">
+      <div class="stat"><div class="num" id="statTotal">0</div><div class="lbl">Συμβόλαια</div></div>
+      <div class="stat"><div class="num" id="statSoon">0</div><div class="lbl">Λήγουν ≤14 ημέρες</div></div>
+      <div class="stat"><div class="num" id="statOver">0</div><div class="lbl">Ληγμένα</div></div>
+      <div class="whoami">
+        <img id="whoamiPhoto" src="" alt="">
+        <span id="whoamiEmail"></span>
+        <button id="signOutBtn">Αποσύνδεση</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="alertBanner"></div>
+
+  <div class="toolbar">
+    <input type="search" id="searchBox" placeholder="Αναζήτηση πελάτη, εταιρίας, αριθμού…">
+    <select class="filter-select" id="filterCompany"><option value="">Όλες οι εταιρίες</option></select>
+    <select class="filter-select" id="filterStatus">
+      <option value="">Όλες οι καταστάσεις</option>
+      <option value="soon">Λήγουν ≤14 ημέρες</option>
+      <option value="over">Ληγμένα</option>
+      <option value="ok">Ενεργά</option>
+    </select>
+    <button class="btn-ghost" id="exportBtn">Εξαγωγή (JSON)</button>
+    <button class="btn-primary" id="addBtn">+ Νέο συμβόλαιο</button>
+  </div>
+
+  <div id="formPanel">
+    <h2 id="formTitle">Νέο συμβόλαιο</h2>
+    <div class="form-grid">
+      <div class="field"><label>Ημερομηνία έναρξης *</label><input type="date" id="f_date"></div>
+      <div class="field"><label>Διάρκεια *</label>
+        <select id="f_duration">
+          <option value="1">Ετήσιο (1)</option>
+          <option value="2">Εξαμηνιαίο (2)</option>
+          <option value="4">Τριμηνιαίο (4)</option>
+          <option value="12">Μηνιαίο (12)</option>
+        </select>
+      </div>
+      <div class="field"><label>Αρ. κυκλοφορίας / Είδος συμβολαίου *</label><input type="text" id="f_ref" placeholder="π.χ. ΙΧΧ-1234 ή Πυρός"></div>
+      <div class="field"><label>Όνομα πελάτη *</label><input type="text" id="f_client"></div>
+
+      <div class="field"><label>Εταιρία Α *</label><input type="text" id="f_company1" list="companyList"></div>
+      <div class="field"><label>Εταιρία Β (προαιρετικό)</label><input type="text" id="f_company2" list="companyList"></div>
+      <datalist id="companyList"></datalist>
+      <div class="field"><label>Καθαρά ασφάλιστρα (€)</label><input type="number" step="0.01" id="f_net" value="0"></div>
+      <div class="field"><label>Μεικτά ασφάλιστρα (€)</label><input type="number" step="0.01" id="f_gross" value="0"></div>
+
+      <div class="field"><label>Προμήθειες (€)</label><input type="number" step="0.01" id="f_commission" value="0"></div>
+      <div class="field"><label>Έξτρα μπόνους (€)</label><input type="number" step="0.01" id="f_bonus" value="0"></div>
+      <div class="field full"><label>Σημείωση</label><textarea id="f_notes"></textarea></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn-ghost" id="cancelBtn">Ακύρωση</button>
+      <button class="btn-primary" id="saveBtn">Αποθήκευση</button>
+    </div>
+  </div>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th data-key="date">Έναρξη <span class="arrow"></span></th>
+          <th data-key="expiry">Λήξη <span class="arrow"></span></th>
+          <th data-key="daysLeft">Κατάσταση <span class="arrow"></span></th>
+          <th data-key="duration">Διάρκεια <span class="arrow"></span></th>
+          <th data-key="ref">Αρ./Είδος <span class="arrow"></span></th>
+          <th data-key="company">Εταιρία <span class="arrow"></span></th>
+          <th data-key="client">Πελάτης <span class="arrow"></span></th>
+          <th data-key="net">Καθαρά <span class="arrow"></span></th>
+          <th data-key="commission">Προμήθειες <span class="arrow"></span></th>
+          <th data-key="gross">Μεικτά <span class="arrow"></span></th>
+          <th data-key="bonus">Μπόνους <span class="arrow"></span></th>
+          <th>Πληρωμές</th>
+          <th>Σημείωση</th>
+          <th>Καταχώρισε</th>
+          <th>Ενέργειες</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div id="monthlyPanel">
+    <h2>Σύνολα ανά μήνα</h2>
+    <div class="table-scroll">
+      <table class="month-table" id="monthTable">
+        <thead>
+          <tr>
+            <th>Μήνας</th><th>Συμβόλαια</th><th>Καθαρά</th><th>Προμήθειες</th><th>Μεικτά</th><th>Μπόνους</th>
+          </tr>
+        </thead>
+        <tbody id="monthTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="note">
+    Το βιβλίο είναι κοινό — κάθε καταχώριση, επεξεργασία ή διαγραφή είναι ορατή σε πραγματικό χρόνο σε όσους έχουν πρόσβαση. Η πρόσβαση περιορίζεται στα Google email που έχουν οριστεί στους κανόνες ασφαλείας της βάσης. Χρησιμοποίησε «Εξαγωγή (JSON)» για περιοδικό αντίγραφο ασφαλείας.
+  </footer>
+
+</div>
+
+<div id="paymentsModal">
+  <div class="payments-card">
+    <div class="payments-head">
+      <h3 id="paymentsTitle">Πληρωμές</h3>
+      <button class="btn-ghost" id="closePaymentsBtn">Κλείσιμο</button>
+    </div>
+    <div class="payments-total">Σύνολο πληρωμένο: <b id="paymentsTotal">0,00 €</b></div>
+    <div id="paymentsList" class="payments-list"></div>
+    <div class="payments-add">
+      <input type="date" id="p_date">
+      <input type="number" step="0.01" id="p_amount" placeholder="Ποσό (€)">
+      <button class="btn-primary" id="addPaymentBtn">Καταχώριση πληρωμής</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ============================================================
+  // 1) Βάλε εδώ τα στοιχεία του Firebase project σου
+  //    (Firebase Console → Project settings → Your apps → Web app)
+  // ============================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyD32wAIERHAc3_xFxKtdQ3B4qkIE5Wm8rM",
+    authDomain: "attiki-brokers-insurance.firebaseapp.com",
+    projectId: "attiki-brokers-insurance",
+    storageBucket: "attiki-brokers-insurance.firebasestorage.app",
+    messagingSenderId: "942923992062",
+    appId: "1:942923992062:web:3b8264e47bb6314d880eaf",
+    measurementId: "G-9T1D3K2Z4S"
+  };
+
+  // 2) Βάλε εδώ τα Google email που επιτρέπεται να έχουν πρόσβαση
+  //    (πρέπει να ταιριάζουν ΑΚΡΙΒΩΣ με τους κανόνες ασφαλείας του Firestore)
+  const ALLOWED_EMAILS = [
+    "attiki.brokers@gmail.com",
+    "mpouristhanos@gmail.com"
+  ];
+  // ============================================================
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const colRef = db.collection('contracts');
+
+  const DEFAULT_COMPANIES = ["INTERAMERICAN","ΕΘΝΙΚΗ ΑΣΦΑΛΙΣΤΙΚΗ","ΕΥΡΩΠΑΪΚΗ ΠΙΣΤΗ","ΥΔΡΟΓΕΙΟΣ","ΓΕΝΙΚΗ ΕΜΠΟΡΙΚΗ","AXA","ALLIANZ","GENERALI","ERGO","MINETTA","NN HELLAS","GROUPAMA ΦΟΙΝΙΞ","INTERASCO","ΣΥΝΕΤΑΙΡΙΣΤΙΚΗ ΑΣΦΑΛΙΣΤΙΚΗ"];
+  const DURATION_LABELS = {"1":"Ετήσιο","2":"Εξαμηνιαίο","4":"Τριμηνιαίο","12":"Μηνιαίο"};
+
+  let contracts = [];
+  let editingId = null;
+  let sortKey = "expiry";
+  let sortDir = 1;
+  let unsubscribe = null;
+  let currentUser = null;
+
+  // ---------- auth ----------
+  document.getElementById('signInBtn').addEventListener('click', ()=>{
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(err=>{
+      alert('Αποτυχία σύνδεσης: '+err.message);
+    });
+  });
+  document.getElementById('signOutBtn').addEventListener('click', ()=>{
+    if(unsubscribe){ unsubscribe(); unsubscribe=null; }
+    auth.signOut();
+  });
+
+  auth.onAuthStateChanged(user=>{
+    currentUser = user;
+    const gate = document.getElementById('authGate');
+    const appWrap = document.getElementById('appWrap');
+    const denied = document.getElementById('deniedMsg');
+    if(user && ALLOWED_EMAILS.includes(user.email)){
+      gate.style.display='none';
+      appWrap.style.display='block';
+      document.getElementById('whoamiPhoto').src = user.photoURL||'';
+      document.getElementById('whoamiEmail').textContent = user.email;
+      startSync();
+    } else if(user){
+      // signed in but not authorized
+      denied.style.display='block';
+      auth.signOut();
+    } else {
+      denied.style.display='none';
+      gate.style.display='flex';
+      appWrap.style.display='none';
+    }
+  });
+
+  function startSync(){
+    const stateEl = document.getElementById('syncState');
+    if(unsubscribe) unsubscribe();
+    unsubscribe = colRef.onSnapshot(snapshot=>{
+      contracts = snapshot.docs.map(d=>Object.assign({id:d.id}, d.data()));
+      stateEl.textContent = '● live';
+      stateEl.classList.remove('err');
+      render();
+    }, err=>{
+      stateEl.textContent = 'Σφάλμα συγχρονισμού — έλεγξε τους κανόνες πρόσβασης';
+      stateEl.classList.add('err');
+      console.error(err);
+    });
+  }
+
+  // ---------- date / money helpers ----------
+  function addMonths(dateStr, months){
+    const d = new Date(dateStr+"T00:00:00");
+    const day = d.getDate();
+    d.setMonth(d.getMonth()+months);
+    if(d.getDate() !== day) d.setDate(0);
+    return d;
+  }
+  function computeExpiry(c){
+    const months = 12/Number(c.duration);
+    return addMonths(c.date, months);
+  }
+  function daysBetween(a,b){
+    const MS=86400000;
+    const da=new Date(a.getFullYear(),a.getMonth(),a.getDate());
+    const db2=new Date(b.getFullYear(),b.getMonth(),b.getDate());
+    return Math.round((db2-da)/MS);
+  }
+  function fmtDate(d){
+    return d.toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  }
+  function fmtMoney(n){
+    return (Number(n)||0).toLocaleString('el-GR',{minimumFractionDigits:2, maximumFractionDigits:2})+" €";
+  }
+  function companyLabel(c){
+    return c.company2 ? c.company1+" + "+c.company2 : c.company1;
+  }
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+  function enrich(c){
+    const expiry = computeExpiry(c);
+    const daysLeft = daysBetween(new Date(), expiry);
+    let status = 'ok';
+    if(daysLeft < 0) status = 'over';
+    else if(daysLeft <= 14) status = 'soon';
+    return Object.assign({}, c, {expiryDate:expiry, daysLeft, status});
+  }
+
+  function refreshCompanyList(){
+    const set = new Set(DEFAULT_COMPANIES);
+    contracts.forEach(c=>{ if(c.company1) set.add(c.company1); if(c.company2) set.add(c.company2); });
+    const dl = document.getElementById('companyList');
+    dl.innerHTML = [...set].sort((a,b)=>a.localeCompare(b,'el')).map(c=>`<option value="${escapeHtml(c)}">`).join('');
+    const filterSel = document.getElementById('filterCompany');
+    const current = filterSel.value;
+    filterSel.innerHTML = '<option value="">Όλες οι εταιρίες</option>' + [...set].sort((a,b)=>a.localeCompare(b,'el')).map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    filterSel.value = current;
+  }
+
+  function getFiltered(){
+    const q = document.getElementById('searchBox').value.trim().toLowerCase();
+    const fc = document.getElementById('filterCompany').value;
+    const fs = document.getElementById('filterStatus').value;
+    return contracts.map(enrich).filter(c=>{
+      if(fc && c.company1!==fc && c.company2!==fc) return false;
+      if(fs && c.status!==fs) return false;
+      if(q){
+        const hay = [c.client,c.ref,c.company1,c.company2,c.notes].join(' ').toLowerCase();
+        if(!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  function sortRows(rows){
+    const dir = sortDir;
+    return rows.sort((a,b)=>{
+      let va, vb;
+      switch(sortKey){
+        case 'date': va=a.date; vb=b.date; break;
+        case 'expiry': va=a.expiryDate; vb=b.expiryDate; break;
+        case 'daysLeft': va=a.daysLeft; vb=b.daysLeft; break;
+        case 'duration': va=Number(a.duration); vb=Number(b.duration); break;
+        case 'ref': va=a.ref||''; vb=b.ref||''; break;
+        case 'company': va=companyLabel(a); vb=companyLabel(b); break;
+        case 'client': va=a.client||''; vb=b.client||''; break;
+        case 'net': va=Number(a.net)||0; vb=Number(b.net)||0; break;
+        case 'commission': va=Number(a.commission)||0; vb=Number(b.commission)||0; break;
+        case 'gross': va=Number(a.gross)||0; vb=Number(b.gross)||0; break;
+        case 'bonus': va=Number(a.bonus)||0; vb=Number(b.bonus)||0; break;
+        default: va=a.expiryDate; vb=b.expiryDate;
+      }
+      if(va instanceof Date && vb instanceof Date) return (va-vb)*dir;
+      if(typeof va === 'number') return (va-vb)*dir;
+      return String(va).localeCompare(String(vb),'el')*dir;
+    });
+  }
+
+  function render(){
+    refreshCompanyList();
+    const all = contracts.map(enrich);
+    document.getElementById('statTotal').textContent = all.length;
+    document.getElementById('statSoon').textContent = all.filter(c=>c.status==='soon').length;
+    document.getElementById('statOver').textContent = all.filter(c=>c.status==='over').length;
+
+    renderAlerts(all);
+    const rows = sortRows(getFiltered());
+    const tbody = document.getElementById('tbody');
+    if(rows.length===0){
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="15">Δεν βρέθηκαν συμβόλαια.</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map(rowHtml).join('');
+    }
+    document.querySelectorAll('thead th[data-key]').forEach(th=>{
+      const arrow = th.querySelector('.arrow');
+      arrow.textContent = th.dataset.key===sortKey ? (sortDir===1?'▲':'▼') : '';
+    });
+    renderMonthly(all);
+  }
+
+  function rowHtml(c){
+    const trClass = c.status==='soon' ? 'exp-soon' : (c.status==='over' ? 'exp-over' : '');
+    const badge = c.status==='soon' ? `<span class="status-badge soon">${c.daysLeft} ημέρες</span>`
+      : c.status==='over' ? `<span class="status-badge over">Έληξε (${Math.abs(c.daysLeft)}ημ.)</span>`
+      : `<span class="status-badge">${c.daysLeft} ημέρες</span>`;
+    const paid = Number(c.paidTotal)||0;
+    const gross = Number(c.gross)||0;
+    const paidClass = gross>0 && paid>=gross ? 'paid-full' : (paid>0 ? 'paid-partial' : 'paid-none');
+    return `<tr class="${trClass}" data-id="${c.id}">
+      <td>${fmtDate(new Date(c.date+"T00:00:00"))}</td>
+      <td>${fmtDate(c.expiryDate)}</td>
+      <td>${badge}</td>
+      <td>${DURATION_LABELS[c.duration]||c.duration}</td>
+      <td>${escapeHtml(c.ref)}</td>
+      <td>${escapeHtml(companyLabel(c))}</td>
+      <td>${escapeHtml(c.client)}</td>
+      <td class="num-cell">${fmtMoney(c.net)}</td>
+      <td class="num-cell">${fmtMoney(c.commission)}</td>
+      <td class="num-cell">${fmtMoney(c.gross)}</td>
+      <td class="num-cell">${fmtMoney(c.bonus)}</td>
+      <td class="num-cell"><span class="paid-tag ${paidClass}">${fmtMoney(paid)} / ${fmtMoney(gross)}</span></td>
+      <td class="note-cell" title="${escapeHtml(c.notes)}">${escapeHtml(c.notes)}</td>
+      <td class="who-cell">${escapeHtml(c.createdBy||'')}</td>
+      <td class="row-actions">
+        <button class="btn-text" data-action="edit" data-id="${c.id}">Επεξεργασία</button>
+        <button class="btn-text" data-action="payments" data-id="${c.id}">Πληρωμές</button>
+        <button class="btn-danger-text" data-action="delete" data-id="${c.id}">Διαγραφή</button>
+      </td>
+    </tr>`;
+  }
+
+  function renderAlerts(all){
+    const box = document.getElementById('alertBanner');
+    const soon = all.filter(c=>c.status==='soon').sort((a,b)=>a.daysLeft-b.daysLeft);
+    const over = all.filter(c=>c.status==='over').sort((a,b)=>a.daysLeft-b.daysLeft);
+    let html = '';
+    if(over.length){
+      html += `<div class="alert-box danger"><div class="title">${over.length} ληγμένα συμβόλαια χρειάζονται ενέργεια</div>
+        <div class="alert-list">${over.map(c=>`<div class="alert-chip d0" data-id="${c.id}"><b>${escapeHtml(c.client)}</b> — ${escapeHtml(companyLabel(c))} (έληξε πριν ${Math.abs(c.daysLeft)} ημ.)</div>`).join('')}</div></div>`;
+    }
+    if(soon.length){
+      html += `<div class="alert-box"><div class="title">${soon.length} συμβόλαια λήγουν εντός 14 ημερών</div>
+        <div class="alert-list">${soon.map(c=>`<div class="alert-chip" data-id="${c.id}"><b>${escapeHtml(c.client)}</b> — ${escapeHtml(companyLabel(c))} (σε ${c.daysLeft} ημ.)</div>`).join('')}</div></div>`;
+    }
+    box.innerHTML = html;
+    box.querySelectorAll('.alert-chip').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        document.getElementById('searchBox').value='';
+        document.getElementById('filterCompany').value='';
+        document.getElementById('filterStatus').value='';
+        openEdit(el.dataset.id);
+      });
+    });
+  }
+
+  function renderMonthly(all){
+    const groups = {};
+    all.forEach(c=>{
+      const d = new Date(c.date+"T00:00:00");
+      const key = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,'0');
+      if(!groups[key]) groups[key] = {count:0, net:0, commission:0, gross:0, bonus:0};
+      groups[key].count++;
+      groups[key].net += Number(c.net)||0;
+      groups[key].commission += Number(c.commission)||0;
+      groups[key].gross += Number(c.gross)||0;
+      groups[key].bonus += Number(c.bonus)||0;
+    });
+    const keys = Object.keys(groups).sort().reverse();
+    const monthNames = ["Ιανουάριος","Φεβρουάριος","Μάρτιος","Απρίλιος","Μάιος","Ιούνιος","Ιούλιος","Αύγουστος","Σεπτέμβριος","Οκτώβριος","Νοέμβριος","Δεκέμβριος"];
+    const tbody = document.getElementById('monthTbody');
+    if(keys.length===0){
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--ink-soft); padding:24px;">Δεν υπάρχουν δεδομένα.</td></tr>`;
+      return;
+    }
+    let totals = {count:0,net:0,commission:0,gross:0,bonus:0};
+    let rows = keys.map(k=>{
+      const [y,m] = k.split('-');
+      const g = groups[k];
+      totals.count+=g.count; totals.net+=g.net; totals.commission+=g.commission; totals.gross+=g.gross; totals.bonus+=g.bonus;
+      return `<tr><td>${monthNames[Number(m)-1]} ${y}</td><td>${g.count}</td><td>${fmtMoney(g.net)}</td><td>${fmtMoney(g.commission)}</td><td>${fmtMoney(g.gross)}</td><td>${fmtMoney(g.bonus)}</td></tr>`;
+    }).join('');
+    rows += `<tr class="grand-total"><td>Σύνολο</td><td>${totals.count}</td><td>${fmtMoney(totals.net)}</td><td>${fmtMoney(totals.commission)}</td><td>${fmtMoney(totals.gross)}</td><td>${fmtMoney(totals.bonus)}</td></tr>`;
+    tbody.innerHTML = rows;
+  }
+
+  // ---------- form handling ----------
+  function openAdd(){
+    editingId = null;
+    document.getElementById('formTitle').textContent = 'Νέο συμβόλαιο';
+    ['f_date','f_ref','f_client','f_company1','f_company2','f_notes'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('f_duration').value = '1';
+    ['f_net','f_gross','f_commission','f_bonus'].forEach(id=>document.getElementById(id).value='0');
+    document.getElementById('f_date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('formPanel').classList.add('open');
+    document.getElementById('f_date').focus();
+  }
+  function openEdit(id){
+    const c = contracts.find(x=>x.id===id);
+    if(!c) return;
+    editingId = id;
+    document.getElementById('formTitle').textContent = 'Επεξεργασία συμβολαίου';
+    document.getElementById('f_date').value = c.date;
+    document.getElementById('f_duration').value = c.duration;
+    document.getElementById('f_ref').value = c.ref;
+    document.getElementById('f_client').value = c.client;
+    document.getElementById('f_company1').value = c.company1;
+    document.getElementById('f_company2').value = c.company2||'';
+    document.getElementById('f_net').value = c.net;
+    document.getElementById('f_gross').value = c.gross;
+    document.getElementById('f_commission').value = c.commission;
+    document.getElementById('f_bonus').value = c.bonus;
+    document.getElementById('f_notes').value = c.notes||'';
+    document.getElementById('formPanel').classList.add('open');
+    document.getElementById('formPanel').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  function closeForm(){
+    editingId = null;
+    document.getElementById('formPanel').classList.remove('open');
+  }
+
+  async function saveForm(){
+    const date = document.getElementById('f_date').value;
+    const client = document.getElementById('f_client').value.trim();
+    const company1 = document.getElementById('f_company1').value.trim();
+    const ref = document.getElementById('f_ref').value.trim();
+    if(!date || !client || !company1 || !ref){
+      alert('Συμπληρώστε τα υποχρεωτικά πεδία: ημερομηνία, αριθμός/είδος, εταιρία Α, πελάτης.');
+      return;
+    }
+    const duration = document.getElementById('f_duration').value;
+    const company2 = document.getElementById('f_company2').value.trim();
+    const data = {
+      date,
+      duration,
+      ref,
+      client,
+      company1,
+      company2,
+      net: parseFloat(document.getElementById('f_net').value)||0,
+      gross: parseFloat(document.getElementById('f_gross').value)||0,
+      commission: parseFloat(document.getElementById('f_commission').value)||0,
+      bonus: parseFloat(document.getElementById('f_bonus').value)||0,
+      notes: document.getElementById('f_notes').value.trim(),
+      updatedBy: currentUser ? currentUser.email : '',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true; saveBtn.textContent = 'Αποθήκευση…';
+    try{
+      if(editingId){
+        await colRef.doc(editingId).update(data);
+      } else {
+        data.createdBy = currentUser ? currentUser.email : '';
+        data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        data.paidTotal = 0;
+        await colRef.add(data);
+      }
+      closeForm();
+    }catch(err){
+      alert('Σφάλμα αποθήκευσης: '+err.message);
+    }finally{
+      saveBtn.disabled=false; saveBtn.textContent='Αποθήκευση';
+    }
+  }
+
+  function deleteContract(id){
+    const c = contracts.find(x=>x.id===id);
+    if(!c) return;
+    if(!confirm(`Διαγραφή συμβολαίου του/της ${c.client} (${c.ref});`)) return;
+    colRef.doc(id).delete().catch(err=>alert('Σφάλμα διαγραφής: '+err.message));
+  }
+
+  // ---------- export ----------
+  function exportJson(){
+    const blob = new Blob([JSON.stringify(contracts,null,2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sumvolaia-backup-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- payments (per contract) ----------
+  let paymentsUnsub = null;
+  let paymentsContractId = null;
+
+  function paymentsColRef(contractId){
+    return colRef.doc(contractId).collection('payments');
+  }
+
+  function openPayments(id){
+    const c = contracts.find(x=>x.id===id);
+    if(!c) return;
+    paymentsContractId = id;
+    document.getElementById('paymentsTitle').textContent = `Πληρωμές — ${c.client} (${c.ref})`;
+    document.getElementById('p_date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('p_amount').value = '';
+    document.getElementById('paymentsModal').style.display = 'flex';
+    if(paymentsUnsub) paymentsUnsub();
+    paymentsUnsub = paymentsColRef(id).orderBy('date','desc').onSnapshot(snapshot=>{
+      renderPayments(snapshot.docs.map(d=>Object.assign({id:d.id}, d.data())));
+    }, err=>{
+      document.getElementById('paymentsList').innerHTML = `<div class="empty-note">Σφάλμα: ${escapeHtml(err.message)}</div>`;
+    });
+  }
+  function closePayments(){
+    document.getElementById('paymentsModal').style.display = 'none';
+    if(paymentsUnsub){ paymentsUnsub(); paymentsUnsub = null; }
+    paymentsContractId = null;
+  }
+  function renderPayments(payments){
+    _lastPayments = payments;
+    const list = document.getElementById('paymentsList');
+    const total = payments.reduce((s,p)=>s+(Number(p.amount)||0), 0);
+    document.getElementById('paymentsTotal').textContent = fmtMoney(total);
+    if(payments.length===0){
+      list.innerHTML = `<div class="empty-note">Δεν έχουν καταχωρηθεί πληρωμές ακόμα.</div>`;
+      return;
+    }
+    list.innerHTML = payments.map(p=>`
+      <div class="payment-row">
+        <span>${fmtDate(new Date(p.date+"T00:00:00"))}</span>
+        <span class="num-cell">${fmtMoney(p.amount)}</span>
+        <button class="btn-danger-text" data-id="${p.id}">Διαγραφή</button>
+      </div>
+    `).join('');
+  }
+  async function addPayment(){
+    const date = document.getElementById('p_date').value;
+    const amount = parseFloat(document.getElementById('p_amount').value);
+    if(!date || !amount || amount<=0){
+      alert('Συμπλήρωσε ημερομηνία και ποσό μεγαλύτερο από 0.');
+      return;
+    }
+    const btn = document.getElementById('addPaymentBtn');
+    btn.disabled = true; btn.textContent = 'Καταχώριση…';
+    try{
+      const batch = db.batch();
+      batch.set(paymentsColRef(paymentsContractId).doc(), {
+        date, amount,
+        createdBy: currentUser ? currentUser.email : '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      batch.update(colRef.doc(paymentsContractId), { paidTotal: firebase.firestore.FieldValue.increment(amount) });
+      await batch.commit();
+      document.getElementById('p_amount').value = '';
+      document.getElementById('p_date').value = new Date().toISOString().slice(0,10);
+    }catch(err){
+      alert('Σφάλμα: '+err.message);
+    }finally{
+      btn.disabled=false; btn.textContent='Καταχώριση πληρωμής';
+    }
+  }
+  async function deletePayment(paymentId, amount){
+    if(!confirm('Διαγραφή αυτής της πληρωμής;')) return;
+    try{
+      const batch = db.batch();
+      batch.delete(paymentsColRef(paymentsContractId).doc(paymentId));
+      batch.update(colRef.doc(paymentsContractId), { paidTotal: firebase.firestore.FieldValue.increment(-amount) });
+      await batch.commit();
+    }catch(err){
+      alert('Σφάλμα: '+err.message);
+    }
+  }
+  document.getElementById('closePaymentsBtn').addEventListener('click', closePayments);
+  document.getElementById('addPaymentBtn').addEventListener('click', addPayment);
+  let _lastPayments = [];
+  document.getElementById('paymentsList').addEventListener('click', (e)=>{
+    const btn = e.target.closest('button[data-id]');
+    if(!btn) return;
+    const row = _lastPayments.find(p=>p.id===btn.dataset.id);
+    deletePayment(btn.dataset.id, row ? row.amount : 0);
+  });
+
+  // ---------- events ----------
+  document.getElementById('addBtn').addEventListener('click', openAdd);
+  document.getElementById('cancelBtn').addEventListener('click', closeForm);
+  document.getElementById('saveBtn').addEventListener('click', saveForm);
+  document.getElementById('searchBox').addEventListener('input', render);
+  document.getElementById('filterCompany').addEventListener('change', render);
+  document.getElementById('filterStatus').addEventListener('change', render);
+  document.getElementById('exportBtn').addEventListener('click', exportJson);
+  document.getElementById('tbody').addEventListener('click', (e)=>{
+    const btn = e.target.closest('button[data-action]');
+    if(!btn) return;
+    const id = btn.dataset.id;
+    if(btn.dataset.action==='edit') openEdit(id);
+    if(btn.dataset.action==='delete') deleteContract(id);
+    if(btn.dataset.action==='payments') openPayments(id);
+  });
+  document.querySelectorAll('thead th[data-key]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.dataset.key;
+      if(sortKey===key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
+      render();
+    });
+  });
+
+})();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(err=>console.warn('SW registration failed', err));
+  });
+}
+</script>
+</body>
+</html>
